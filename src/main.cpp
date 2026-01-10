@@ -1,13 +1,15 @@
 #include <esp_now.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 
 #define PIR_PIN 13      // Pin PIR
 #define LED_PIN 2       // Pin LED
 #define MAX_RETRIES 3   // Numero massimo di ritrasmissioni
 #define ACK_TIMEOUT 500 // Timeout per ACK in ms
+#define CHANNEL 6
 
 // MAC del ricevitore (da sostituire con il MAC reale)
-//uint8_t receiverMAC[] = {0x24, 0x6F, 0x28, 0xAA, 0xBB, 0xCC};
+// uint8_t receiverMAC[] = {0x24, 0x6F, 0x28, 0xAA, 0xBB, 0xCC};
 uint8_t receiverMAC[] = {0xD4, 0xE9, 0xF4, 0xA3, 0x0E, 0x54};
 
 typedef struct
@@ -41,6 +43,7 @@ void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 // Callback per ricevere l'ACK dal ricevitore
 void onDataReceive(const uint8_t *mac_addr, const uint8_t *data, int len)
 {
+  Serial.println("Dati ricevuti");
   if (len == sizeof(msg_t))
   {
     msg_t ackMsg;
@@ -66,8 +69,17 @@ void setup()
 
   // ESP-NOW setup
   WiFi.mode(WIFI_STA); // necessario per ESP-NOW
-  WiFi.channel(1);
-  // WiFi.setChannel(1);  // fissare canale
+
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_promiscuous(false);
+  esp_wifi_set_max_tx_power(78); // massima potenza
+
+
+  //WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  // WiFi.setChannel(1);
+  // WiFi.channel(1);
+  //  WiFi.setChannel(1);  // fissare canale
 
   if (esp_now_init() != ESP_OK)
   {
@@ -81,7 +93,7 @@ void setup()
   // Aggiungi peer (ricevitore)
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, receiverMAC, 6);
-  peer.channel = 1;
+  peer.channel = CHANNEL;
   peer.encrypt = false;
   if (esp_now_add_peer(&peer) != ESP_OK)
   {
@@ -103,6 +115,7 @@ void loop()
     while (!ackReceived && retries < MAX_RETRIES)
     {
       esp_now_send(receiverMAC, (uint8_t *)&msg, sizeof(msg));
+      delay(100); // lascia il tempo di ricevere ACK
 
       unsigned long start = millis();
       while (millis() - start < ACK_TIMEOUT)
